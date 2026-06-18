@@ -812,6 +812,9 @@ body.consent-ok section.step[data-title="Einverständnis"] h2{
   }
 }
 
+
+/* FIX20C: Désirée-Version ohne Mitarbeiter-Schritt */
+section.step[data-title="Mitarbeiter"]{display:none!important;}
 </style>
 </head>
 
@@ -1359,6 +1362,11 @@ function setOpenStates(){
   workSteps.forEach((step, index) => {
     const title = step.dataset.title || "";
 
+    // Mitarbeiter ist in der Désirée-Version fest vergeben und wird übersprungen.
+    if(title === "Mitarbeiter"){
+      return;
+    }
+
     // Abschlussfrage ist kein allgemeiner Arbeitsabschnitt.
     // Sie wird über die Situationslogik im Bericht gesetzt.
     if(title === "Abschlussfrage"){
@@ -1392,10 +1400,10 @@ function updateConsentFlow(){
 
   if(isAdminMode()){
     $("blockedNotice").style.display = "none";
-    currentWorkIndex = 0;
+    currentWorkIndex = 1;
   }else if(consent === "ja"){
     $("blockedNotice").style.display = "none";
-    currentWorkIndex = 0;
+    currentWorkIndex = 1;
   }else{
     currentWorkIndex = -1;
     $("blockedNotice").style.display = consent ? "block" : "none";
@@ -1441,8 +1449,8 @@ function nextStep(){
 
   if(!validateCurrentStep()) return;
 
-  if(currentWorkIndex < 0){
-    currentWorkIndex = 0;
+  if(currentWorkIndex < 1){
+    currentWorkIndex = 1;
   }else if(currentWorkIndex < workSteps.length - 1){
     currentWorkIndex++;
   }
@@ -1456,7 +1464,7 @@ function nextStep(){
 function prevStep(){
   if(!isAdminMode() && consentValue() !== "ja") return;
 
-  if(currentWorkIndex > 0){
+  if(currentWorkIndex > 1){
     currentWorkIndex--;
   }
 
