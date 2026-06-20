@@ -2848,16 +2848,18 @@ async function copyReport(){
 
   const report = $("report");
   const text = report ? (report.innerText || report.textContent || "").trim() : "";
-  const html = report ? (report.innerHTML || "").trim() : "";
+  const rawHtml = report ? (report.innerHTML || "").trim() : "";
 
   if(!text || text === "Berichtsausgabe"){
     if($("copyStatus")) $("copyStatus").textContent = "Kein Bericht zum Kopieren vorhanden.";
     return;
   }
 
+  const htmlContent = '<div style="font-family:Arial, Helvetica, sans-serif; white-space:normal; line-height:1.46; color:#00a651;">' + rawHtml + '</div>';
+  const htmlDoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' + htmlContent + '</body></html>';
+
   try{
-    if(navigator.clipboard && window.ClipboardItem && html){
-      const htmlDoc = '<!DOCTYPE html><html><body style="font-family:Arial, Helvetica, sans-serif; white-space:normal; line-height:1.46; color:#00a651;">' + html + '</body></html>';
+    if(navigator.clipboard && window.ClipboardItem && rawHtml){
       await navigator.clipboard.write([
         new ClipboardItem({
           "text/html": new Blob([htmlDoc], { type:"text/html" }),
@@ -2865,19 +2867,31 @@ async function copyReport(){
         })
       ]);
     }else{
-      await navigator.clipboard.writeText(text);
+      throw new Error("HTML clipboard not available");
     }
 
     if($("copyStatus")) $("copyStatus").textContent = "Bericht kopiert.";
     if($("resetInputsBtn")) $("resetInputsBtn").disabled = false;
   }catch(error){
+    const holder = document.createElement("div");
+    holder.style.position = "fixed";
+    holder.style.left = "-9999px";
+    holder.style.top = "0";
+    holder.style.color = "#00a651";
+    holder.style.fontFamily = "Arial, Helvetica, sans-serif";
+    holder.style.lineHeight = "1.46";
+    holder.innerHTML = htmlContent;
+    document.body.appendChild(holder);
+
     const range = document.createRange();
-    range.selectNodeContents(report);
+    range.selectNodeContents(holder);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
     document.execCommand("copy");
     selection.removeAllRanges();
+    holder.remove();
+
     if($("copyStatus")) $("copyStatus").textContent = "Bericht kopiert.";
     if($("resetInputsBtn")) $("resetInputsBtn").disabled = false;
   }
@@ -4065,14 +4079,22 @@ const MedizinReportController = {
     const infektErgaenzung = normalisiereZusatz(val("infektErgaenzung"));
     const lines = [];
 
-    if(besonderheitErgaenzung){
-      lines.push("Besonderheiten:\n" + besonderheitErgaenzung);
-    }else if(besonderheitStatus === "Ja"){
+    if(besonderheitStatus === "Ja"){
+      const besonderheitLines = [];
       if(besonderheiten.length){
-        lines.push("Besonderheiten:\n- " + besonderheiten.join("\n- "));
+        besonderheitLines.push("- " + besonderheiten.join("\n- "));
+      }
+      if(besonderheitErgaenzung){
+        besonderheitLines.push(besonderheitErgaenzung);
+      }
+
+      if(besonderheitLines.length){
+        lines.push("Besonderheiten:\n" + besonderheitLines.join("\n"));
       }else{
         lines.push("Besonderheiten sind vorhanden, die genaue Art ist noch nicht ausgewählt.");
       }
+    }else if(besonderheitErgaenzung){
+      lines.push("Besonderheiten:\n" + besonderheitErgaenzung);
     }else if(besonderheitStatus === "Nein"){
       lines.push("Es sind keine äußerlichen Besonderheiten bekannt.");
     }else if(besonderheitStatus === "Unklar"){
