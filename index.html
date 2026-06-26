@@ -434,6 +434,7 @@ body.admin-mode #abschlussfrageWrapField select{
 .report-call-notice{font-weight:700;font-style:italic;display:block;margin-top:0;}
 .report-urgent{font-weight:700;}
 .report-warning{font-weight:700;}
+.report-alarm{color:#00a651;font-weight:700;font-style:italic;}
 
 
 /* FIX17: Bericht rechts sticky ab Tablet quer / Desktop */
@@ -889,7 +890,10 @@ section.step[data-title="Mitarbeiter"]{display:none!important;}
 <option value="noch lebend – Bilder erst nach Versterben">noch lebend – Bilder erst nach Versterben</option>
 <option value="Einleitung">Einleitung</option>
 <option value="Kaiserschnitt">Kaiserschnitt</option>
-</select></div><div class="field-wrap" id="palliativeGeburtWrapField"><label class="option"><input id="palliativeGeburt" type="checkbox" value="Palliative Geburt"/><span>Palliative Geburt</span></label></div><div class="field-wrap" id="alterKindWrapField"><label class="field-label" for="alterKind">Geburtsalter</label><input id="alterKind" inputmode="numeric" maxlength="2" placeholder=""/></div><div class="field-wrap" id="alterEinheitWrapField"><label class="field-label" for="alterEinheit">Einheit des Alters</label><select id="alterEinheit">
+</select></div><div class="field-wrap" id="palliativeGeburtWrapField">
+<label class="option"><input id="palliativeGeburt" type="checkbox" value="Palliative Geburt"/><span>Palliative Geburt</span></label>
+<label class="option hidden" id="stillGeborenWrapField"><input id="stillGeboren" type="checkbox" value="Das Kind wurde bereits still geboren."/><span>Das Kind wurde bereits still geboren.</span></label>
+</div><div class="field-wrap" id="alterKindWrapField"><label class="field-label" for="alterKind">Geburtsalter</label><input id="alterKind" inputmode="numeric" maxlength="2" placeholder=""/></div><div class="field-wrap" id="alterEinheitWrapField"><label class="field-label" for="alterEinheit">Einheit des Alters</label><select id="alterEinheit">
 <option value=""></option>
 <option>SSW</option>
 <option>Monat(e)</option>
@@ -900,6 +904,7 @@ section.step[data-title="Mitarbeiter"]{display:none!important;}
 <label class="field-label">Zusatzinfos Einleitung</label>
 <label class="option" id="einleitungWehenWrapField"><input id="einleitungWehen" type="checkbox" value="Es haben bereits Wehen eingesetzt."/><span>Es haben bereits Wehen eingesetzt.</span></label>
 <label class="option" id="geburtNichtAbsehbarWrapField"><input id="geburtNichtAbsehbar" type="checkbox" value="Wann die Geburt stattfinden wird, ist aktuell noch nicht absehbar."/><span>Wann die Geburt stattfinden wird, ist aktuell noch nicht absehbar.</span></label>
+<label class="option" id="alarmSpaeterWrapField"><input id="alarmSpaeter" type="checkbox" value="Falls sich bereits jemand als Ansprechperson bereithalten kann, freue ich mich über eine kurze Rückmeldung."/><span>Alarm später</span></label>
 </div><div id="wasserWrap">
 <div class="field-wrap" id="wasserWrapField"><label class="field-label" for="wasser">Wassermethode</label><select id="wasser">
 <option value=""></option>
@@ -986,6 +991,10 @@ Die Wassermethode kann helfen, die Haut zu stabilisieren.</p>
 <label class="option"><input class="kommunikationCheck" type="checkbox" value="Englisch möglich"/><span>Englisch möglich</span></label>
 <label class="option"><input class="kommunikationCheck" type="checkbox" value="Kommunikation schwierig"/><span>Kommunikation schwierig</span></label>
 <label class="option"><input class="kommunikationCheck" type="checkbox" value="Übersetzungsprogramm funktioniert gut"/><span>Übersetzungsprogramm funktioniert gut</span></label>
+</div>
+<div class="field-wrap" id="kommunikationErgaenzungWrapField" style="margin-top:10px">
+<label class="field-label" for="kommunikationErgaenzung">Weitere Informationen zur Kommunikation</label>
+<input id="kommunikationErgaenzung" placeholder=""/>
 </div>
 <div class="nav"></div>
 </section>
@@ -2989,6 +2998,7 @@ function recalcAll(){
   updateInfektBesonderheiten();
   updateKommunikationVisibility();
   updateInfektValidation();
+  updateStillGeborenVisibility();
   clearSituationSpecificValues();
 
   // MASTER_2026-06-14_FIX04:
@@ -2996,6 +3006,7 @@ function recalcAll(){
   updateSituationByMehrlingsRegel();
   adminRevealDynamicFields();
   enforceAdminLogicGuards();
+  syncAlarmSpaeterVisibilityForPalliativeEinleitung();
   updateReport();
 
   if($("report")){
@@ -3660,7 +3671,9 @@ function baueKleidungSatz(){
   const erinnerung = val("erinnerung");
   const teile = [];
 
-  if(kleidung === "Nein" && deckchen === "Nein"){
+  if(kleidung === "Ja" && deckchen === "Ja"){
+    teile.push("Kleidung und Deckchen sind vorhanden.");
+  }else if(kleidung === "Nein" && deckchen === "Nein"){
     teile.push("Es sind weder Kleidung noch Deckchen vorhanden. Bringt gerne etwas Schönes mit, wenn ihr etwas habt.");
   }else if(kleidung === "Nein" && deckchen === "Ja"){
     teile.push("Es ist keine Kleidung vorhanden, Deckchen jedoch schon. Bringt gerne etwas Schönes mit, wenn ihr etwas habt.");
@@ -4020,6 +4033,12 @@ const HeaderFooterReportController = {
 
   mitarbeiter(){
   return "Désirée";
+},
+
+  alarmSpaeter(){
+  return $("alarmSpaeter")?.checked
+    ? "Falls sich bereits jemand als Ansprechperson bereithalten kann, freue ich mich über eine kurze Rückmeldung."
+    : "";
 }
 };
 
@@ -4058,12 +4077,14 @@ const KommunikationReportController = {
   build(){
     const lines = [];
     const kommunikation = checkedValues("kommunikationCheck");
+    const kommunikationErgaenzung = normalisiereZusatz(val("kommunikationErgaenzung"));
 
     if(kommunikation.includes("Wenig Deutsch")) lines.push(getFamilienBezug().sprichtWenigDeutsch);
     if(kommunikation.includes("Kein Deutsch")) lines.push(getFamilienBezug().sprichtKeinDeutsch);
     if(kommunikation.includes("Englisch möglich")) lines.push("Die Kommunikation auf Englisch ist möglich.");
     if(kommunikation.includes("Kommunikation schwierig")) lines.push("Die Kommunikation ist aktuell schwierig.");
     if(kommunikation.includes("Übersetzungsprogramm funktioniert gut")) lines.push("Die Kommunikation über ein Übersetzungsprogramm funktioniert gut.");
+    if(kommunikationErgaenzung) lines.push(kommunikationErgaenzung);
 
     return lines.join("\n");
   }
@@ -4076,6 +4097,7 @@ const MedizinReportController = {
     const besonderheiten = checkedValues("besonderheitCheck");
     const infekte = checkedValues("infektCheck");
     const besonderheitErgaenzung = normalisiereZusatz(val("besonderheitErgaenzung"));
+    const kommunikationErgaenzung = normalisiereZusatz(val("kommunikationErgaenzung"));
     const infektErgaenzung = normalisiereZusatz(val("infektErgaenzung"));
     const lines = [];
 
@@ -4128,6 +4150,30 @@ const MedizinReportController = {
   }
 };
 
+
+function updateStillGeborenVisibility(){
+  const wrap = $("stillGeborenWrapField");
+  const field = $("stillGeboren");
+  if(!wrap || !field) return;
+
+  const anzeigen = val("aktuelleSituation") === "verstorben";
+
+  if(anzeigen){
+    wrap.classList.remove("hidden");
+  }else{
+    field.checked = false;
+    wrap.classList.add("hidden");
+  }
+}
+
+const StillGeborenReportController = {
+  build(){
+    if(val("aktuelleSituation") !== "verstorben") return "";
+    if(!$("stillGeboren")?.checked) return "";
+    return "Das Kind wurde bereits still geboren.";
+  }
+};
+
 const FamilyImagesReportController = {
   build(){
     return [
@@ -4166,6 +4212,7 @@ const ReportBuilder = {
       HeaderFooterReportController.greeting(),
       ContactReportController.ansprechpartner(),
       SternenkindReportController.build(),
+      StillGeborenReportController.build(),
       FamilyImagesReportController.build(),
       KleidungReportController.build(),
       WaterMethodReportController.build(),
@@ -4173,7 +4220,8 @@ const ReportBuilder = {
       MedizinReportController.build(),
       AbschlussfrageReportController.build(),
       HeaderFooterReportController.footer(),
-      HeaderFooterReportController.mitarbeiter()
+      HeaderFooterReportController.mitarbeiter(),
+      HeaderFooterReportController.alarmSpaeter()
     ].forEach(text => this.addUniqueBlock(blocks, seen, text));
 
     return blocks.join("\n\n");
@@ -4203,6 +4251,7 @@ function renderReportHtml(value){
     .replaceAll("Es sind keine Infekte bekannt.", '<strong>Es sind keine Infekte bekannt.</strong>')
     .replaceAll("Ob Infekte vorliegen, ist aktuell nicht bekannt.", '<strong>Ob Infekte vorliegen, ist aktuell nicht bekannt.</strong>')
     .replaceAll("Beim Punkt Infekte muss Ja, Nein, Unklar oder ein freier Texteintrag vorhanden sein.", '<strong>Beim Punkt Infekte muss Ja, Nein, Unklar oder ein freier Texteintrag vorhanden sein.</strong>')
+    .replaceAll("Falls sich bereits jemand als Ansprechperson bereithalten kann, freue ich mich über eine kurze Rückmeldung.", '<strong><em style="color:#00a651!important;">Falls sich bereits jemand als Ansprechperson bereithalten kann, freue ich mich über eine kurze Rückmeldung.</em></strong>')
     .replaceAll("Besonderheiten:", '<strong>Besonderheiten:</strong>')
     .replaceAll("Bekannte Infekte:", '<strong>Bekannte Infekte:</strong>')
     .replaceAll("\n", "<br>");
@@ -4436,6 +4485,23 @@ document.addEventListener('change', function(e){
   }
 });
 
+
+
+
+function syncAlarmSpaeterVisibilityForPalliativeEinleitung(){
+  const wrap = document.getElementById("alarmSpaeterWrapField");
+  const parent = document.getElementById("einleitungZusatzWrapField");
+  if(!wrap || !parent) return;
+
+  const isEinleitung = val("aktuelleSituation") === "Einleitung";
+  const isPalliativEinleitung = document.getElementById("palliativeGeburt")?.checked && val("aktuelleSituation") === "Einleitung";
+
+  wrap.classList.toggle("hidden", !(isEinleitung || isPalliativEinleitung));
+  if(isEinleitung || isPalliativEinleitung){
+    parent.classList.remove("hidden");
+  }
+}
+
 </script>
 
 <script>
@@ -4505,6 +4571,23 @@ document.addEventListener('change', function(e){
   window.addEventListener("load", syncGeschlechtDropdown);
   syncGeschlechtDropdown();
 })();
+
+
+
+function syncAlarmSpaeterVisibilityForPalliativeEinleitung(){
+  const wrap = document.getElementById("alarmSpaeterWrapField");
+  const parent = document.getElementById("einleitungZusatzWrapField");
+  if(!wrap || !parent) return;
+
+  const isEinleitung = val("aktuelleSituation") === "Einleitung";
+  const isPalliativEinleitung = document.getElementById("palliativeGeburt")?.checked && val("aktuelleSituation") === "Einleitung";
+
+  wrap.classList.toggle("hidden", !(isEinleitung || isPalliativEinleitung));
+  if(isEinleitung || isPalliativEinleitung){
+    parent.classList.remove("hidden");
+  }
+}
+
 </script>
 
 
@@ -4546,6 +4629,23 @@ document.addEventListener('change', function(e){
 
   window.addEventListener('load', updateWasserOptionen);
 })();
+
+
+
+function syncAlarmSpaeterVisibilityForPalliativeEinleitung(){
+  const wrap = document.getElementById("alarmSpaeterWrapField");
+  const parent = document.getElementById("einleitungZusatzWrapField");
+  if(!wrap || !parent) return;
+
+  const isEinleitung = val("aktuelleSituation") === "Einleitung";
+  const isPalliativEinleitung = document.getElementById("palliativeGeburt")?.checked && val("aktuelleSituation") === "Einleitung";
+
+  wrap.classList.toggle("hidden", !(isEinleitung || isPalliativEinleitung));
+  if(isEinleitung || isPalliativEinleitung){
+    parent.classList.remove("hidden");
+  }
+}
+
 </script>
 
 
@@ -4564,6 +4664,23 @@ document.addEventListener('DOMContentLoaded',function(){
  const feld=document.getElementById('aktuellesAlter');
  if(cb&&wrap&&feld&&cb.checked){ feld.value=''; wrap.classList.add('hidden');}
 });
+
+
+
+function syncAlarmSpaeterVisibilityForPalliativeEinleitung(){
+  const wrap = document.getElementById("alarmSpaeterWrapField");
+  const parent = document.getElementById("einleitungZusatzWrapField");
+  if(!wrap || !parent) return;
+
+  const isEinleitung = val("aktuelleSituation") === "Einleitung";
+  const isPalliativEinleitung = document.getElementById("palliativeGeburt")?.checked && val("aktuelleSituation") === "Einleitung";
+
+  wrap.classList.toggle("hidden", !(isEinleitung || isPalliativEinleitung));
+  if(isEinleitung || isPalliativEinleitung){
+    parent.classList.remove("hidden");
+  }
+}
+
 </script>
 
 
@@ -4608,6 +4725,23 @@ document.addEventListener('DOMContentLoaded',function(){
   window.addEventListener('load', apply);
   setTimeout(apply, 0);
 })();
+
+
+
+function syncAlarmSpaeterVisibilityForPalliativeEinleitung(){
+  const wrap = document.getElementById("alarmSpaeterWrapField");
+  const parent = document.getElementById("einleitungZusatzWrapField");
+  if(!wrap || !parent) return;
+
+  const isEinleitung = val("aktuelleSituation") === "Einleitung";
+  const isPalliativEinleitung = document.getElementById("palliativeGeburt")?.checked && val("aktuelleSituation") === "Einleitung";
+
+  wrap.classList.toggle("hidden", !(isEinleitung || isPalliativEinleitung));
+  if(isEinleitung || isPalliativEinleitung){
+    parent.classList.remove("hidden");
+  }
+}
+
 </script>
 
 </body>
